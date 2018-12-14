@@ -11,27 +11,27 @@ cmsrel CMSSW_9_4_10
 cd CMSSW_9_4_10/src
 cmsenv
 
-## set HjTagger
+// set HjTagger
 git clone https://github.com/BinghuanLi/HjTagger.git
 cd HjTagger
 
-## To prepare the data
-## This will convert root files to save 1 jet per-event
-## 1 event with N jet => N event with 1 jet
+// To prepare the data
+// This will convert root files to save 1 jet per-event
+// 1 event with N jet => N event with 1 jet
 cd scripts
 ./runMVASkim.sh
 cd -
 
-## To train xgBoost
-## This will create the 
-## - BDT model .pkl
-## - plots of feature distribution, correlation, importance
-## - plots of Overtrain tests
+// To train xgBoost
+// This will create the 
+// - BDT model .pkl
+// - plots of feature distribution, correlation, importance
+// - plots of Overtrain tests
 
 cd python
 python sklearn_xgboost.py
 cd -
 
-## Convert pkl to xml for TMVA user
+// Convert pkl to xml for TMVA user
 cd test
 python convert_pkl2xml.py
