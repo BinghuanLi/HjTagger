@@ -1,0 +1,9 @@
+['Jet_pt', 'Jet_qg', 'Jet_lepdrmin', 'Jet_lepdrmax', 'Jet_bDiscriminator']
+{'n_estimators': 500, 'min_child_weight': 10}
+0.858874110454 0.867708773227
+{'n_estimators': 1000, 'min_child_weight': 10}
+0.857695553164 0.872446483076
+{'n_estimators': 500, 'min_child_weight': 100}
+0.859095627768 0.865599027214
+{'n_estimators': 1000, 'min_child_weight': 100}
+0.858167194422 0.868517571792
