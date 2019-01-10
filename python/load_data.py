@@ -20,7 +20,7 @@ from matplotlib import pyplot as plt
 
 inputPath = "../data/"
 #variables = ["Jet_pt","Jet_qg","Jet_lepdrmin","Jet_lepdrmax","Jet_bDiscriminator"]#"EvtWeight","EvtWgtOVnJet"]
-variables = ["Jet25_pt","Jet25_qg","Jet25_lepdrmin","Jet25_lepdrmax","Jet25_bDiscriminator"]#"EvtWeight","EvtWgtOVnJet25"]
+variables = ["Jet25_pt","Jet25_qg","Jet25_lepdrmin","Jet25_lepdrmax","Jet25_bDiscriminator"]#"Jet25_bjdeta","Jet25_chargedEmEnergyFraction","Jet25_eta","Jet25_mass","Jet25_nonjdr","Jet25_nonjdilepptratio","Jet25_numberOfConstituents"]
 
 #load_data_2017(inputPath, variables, False)  # select all jets
 def load_data_2017(inputPath,variables,criteria) :

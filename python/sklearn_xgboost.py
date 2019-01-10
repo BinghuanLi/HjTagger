@@ -7,9 +7,11 @@
 import pickle
 import xgboost as xgb
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split, GridSearchCV
+from sklearn.model_selection import KFold, train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.metrics import confusion_matrix, mean_squared_error
 from sklearn.metrics import roc_curve, auc
+from sklearn.feature_selection import RFECV
+from functools import partial
 
 rng = np.random.RandomState(31337)
 
@@ -76,7 +78,7 @@ nB = len(traindataset.ix[(traindataset.target.values == 0)])
 print "length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", nB/nS 
 
 # search and save parameters
-if 1 > 0 : # dummpy if, FIXME
+if 0 > 1 : # dummpy if, FIXME
     # http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
     param_grid = {
                 'n_estimators': [ 500, 1000],
@@ -105,6 +107,33 @@ if 1 > 0 : # dummpy if, FIXME
 
 
 clf = xgb.XGBClassifier(scale_pos_weight = nB/nS)
+
+# recursive elimination of features with cross validation
+if 1 > 0 : # dummy if, FIXME
+    # https://www.kaggle.com/mithrillion/a-few-python-tricks-to-mod-sklearn
+    # trick to add sample weight
+    CLS = xgb.XGBClassifier(scale_pos_weight = nB/nS)
+    CLS.fit = partial(CLS.fit, sample_weight=(traindataset["totalWeight"].astype(np.float64)))
+    selector = RFECV(CLS, step=1, cv=3)
+    selector = selector.fit(
+            traindataset[variables].values,
+            traindataset.target.astype(np.bool)
+            #sample_weight=(traindataset["totalWeight"].astype(np.float64))
+    )
+    print("Optimal number of features : %d" % selector.n_features_)
+    print({c: r for c, r in zip(traindataset.columns, selector.ranking_)})
+    print(" feature selection ranking ")
+    print variables
+    print selector.ranking_
+
+    # Plot number of features VS. cross-validation scores
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.set_xlabel("Number of features selected")
+    ax.set_ylabel("Cross validation score (nb of correct classifications)")
+    ax.plot(range(1, len(selector.grid_scores_) + 1), selector.grid_scores_)
+    fig.savefig("Hj_feature_selection.png")
+    fig.savefig("Hj_feature_selection.pdf")
+
 
 clf.fit(
     traindataset[variables].values,
