@@ -70,37 +70,40 @@ print(clf.best_params_)
 ##### Book and Train Classifier
 ############################
 
+# Early-stopping
+nS = len(traindataset.ix[(traindataset.target.values == 1)])
+nB = len(traindataset.ix[(traindataset.target.values == 0)])
+print "length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", nB/nS 
+
 # search and save parameters
-if 1 < 0 : # dummpy if, FIXME
+if 1 > 0 : # dummpy if, FIXME
     # http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
     param_grid = {
                 'n_estimators': [ 500, 1000],
                 'min_child_weight': [10, 100],
-                #'max_depth': [ 1, 2, 3, 4],
-                #'learning_rate': [0.01, 0.05, 0.1]
+                'max_depth': [ 3, 4],
+                'learning_rate': [0.01, 0.1]
                 #'n_estimators': [ 500 ]
                 }
     scoring = "roc_auc"
     early_stopping_rounds = 150 # Will train until validation_0-auc hasn't improved in 100 rounds.
     cv=3
-    cls = xgb.XGBClassifier()
+    cls = xgb.XGBClassifier(scale_pos_weight = nB/nS)
     saveopt = "GridSearch_GSCV.log"
     file = open(saveopt,"w")
     print ("opt being saved on ", saveopt)
     #file.write("Date: "+ str(time.asctime( time.localtime(time.time()) ))+"\n")
     file.write(str(variables)+"\n")
     result_grid = val_tune_rf(cls,
-        traindataset[variables].values, traindataset["target"].astype(np.bool),
-        valdataset[variables].values, valdataset["target"].astype(np.bool), param_grid, file)
+        traindataset[variables].values, traindataset["target"].astype(np.bool),traindataset["totalWeight"].astype(np.float64),
+        valdataset[variables].values, valdataset["target"].astype(np.bool), valdataset["totalWeight"].astype(np.float64),
+        param_grid, file)
     #file.write(result_grid)
     #file.write("Date: "+ str(time.asctime( time.localtime(time.time()) ))+"\n")
     file.close()
     print ("opt saved on ", saveopt)
 
-# Early-stopping
-nS = len(traindataset.ix[(traindataset.target.values == 1)])
-nB = len(traindataset.ix[(traindataset.target.values == 0)])
-print "length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", nB/nS 
+
 clf = xgb.XGBClassifier(scale_pos_weight = nB/nS)
 
 clf.fit(

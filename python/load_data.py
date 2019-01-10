@@ -82,7 +82,7 @@ def load_data_2017(inputPath,variables,criteria) :
     return data
 
 
-def val_tune_rf(estimator,x_train,y_train,x_val,y_val,params, fileToWrite):
+def val_tune_rf(estimator,x_train,y_train, w_train, x_val,y_val, w_val, params, fileToWrite):
     ''' 
     tune parameters 
     '''
@@ -96,16 +96,16 @@ def val_tune_rf(estimator,x_train,y_train,x_val,y_val,params, fileToWrite):
         print ("Date: ", time.asctime( time.localtime(time.time()) ))
         print '=========  ',param
         estimator.set_params(**param)
-        estimator.fit(x_train,y_train)
+        estimator.fit(x_train,y_train, sample_weight=w_train)
         preds_prob = estimator.predict_proba(x_val)
         preds_prob_train = estimator.predict_proba(x_train)
         print preds_prob
         print preds_prob[:,1]
-        result = roc_auc_score(y_val,preds_prob[:,1])
+        result = roc_auc_score(y_val,preds_prob[:,1], sample_weight = w_val)
         print 'roc_auc_score : %f'%result
         results.append((param,result))
         fileToWrite.write(str(param)+"\n")
-        fileToWrite.write(str(roc_auc_score(y_val,preds_prob[:,1]))+" "+str(roc_auc_score(y_train,preds_prob_train[:,1])))
+        fileToWrite.write(str(roc_auc_score(y_val,preds_prob[:,1],sample_weight=w_val))+" "+str(roc_auc_score(y_train,preds_prob_train[:,1],sample_weight = w_train)))
         fileToWrite.write("\n")
         print ("Date: ", time.asctime( time.localtime(time.time()) ))
     results.sort(key=lambda k: k[1])
