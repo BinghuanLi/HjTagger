@@ -27,8 +27,8 @@ def load_data_2017(inputPath,variables,criteria) :
     print variables
     my_cols_list=variables+['proces', 'key', 'target',"totalWeight"]
     data = pd.DataFrame(columns=my_cols_list)
-    #keys=['TTH_hww_HJet','TTW_NJet']
-    keys=['TTH_HJet','TTV_NJet']
+    keys=['TTH_hww_HJet','TTW_NJet']
+    #keys=['TTH_HJet','TTV_NJet']
     print keys
     for key in keys :
         print key
@@ -53,7 +53,8 @@ def load_data_2017(inputPath,variables,criteria) :
             print inputTree + " deosn't exists in " + inputPath+"/"+key+".root"
             continue
         if tree is not None :
-            try: chunk_arr = tree2array(tree, variables, criteria) #,  start=start, stop = stop)
+            #try: chunk_arr = tree2array(tree, variables, criteria) #,  start=start, stop = stop)
+            try: chunk_arr = tree2array(tree=tree, selection=criteria) #,  start=start, stop = stop)
             except : continue
             else :
                 chunk_df = pd.DataFrame(chunk_arr, columns=variables)
@@ -63,7 +64,8 @@ def load_data_2017(inputPath,variables,criteria) :
                 chunk_df['key']=key
                 chunk_df['target']=target
                 # set weight to 1 
-                chunk_df['totalWeight']=1
+                #chunk_df['totalWeight']=1
+                chunk_df['totalWeight']=chunk_arr['EvtWeight']
                 # set negativ to zero to keep continous distribution
                 chunk_df=chunk_df.clip_lower(0) 
                 data=data.append(chunk_df, ignore_index=True)

@@ -12,12 +12,19 @@ from sklearn.metrics import confusion_matrix, mean_squared_error
 from sklearn.metrics import roc_curve, auc
 from sklearn.feature_selection import RFECV
 from functools import partial
+import json
 
 rng = np.random.RandomState(31337)
 
 execfile("../python/load_data.py")
 
 ####################################################################################################
+## load input variables
+with open('../scripts/input_variable_list.json') as json_file: 
+    variable_dict = json.load(json_file)
+    variable_list = [c for c in variable_dict.keys() if variable_dict[c]=="1"]
+    variables=variable_list
+
 ## Load data
 #data=load_data_2017(inputPath, variables,"Jet25_isToptag<0.5") # select only jets not tagged by TopTaggers 
 data=load_data_2017(inputPath, variables,False) # select all jets 
@@ -109,7 +116,7 @@ if 0 > 1 : # dummpy if, FIXME
 clf = xgb.XGBClassifier(scale_pos_weight = nB/nS)
 
 # recursive elimination of features with cross validation
-if 1 > 0 : # dummy if, FIXME
+if 0 > 1 : # dummy if, FIXME
     # https://www.kaggle.com/mithrillion/a-few-python-tricks-to-mod-sklearn
     # trick to add sample weight
     CLS = xgb.XGBClassifier(scale_pos_weight = nB/nS)
