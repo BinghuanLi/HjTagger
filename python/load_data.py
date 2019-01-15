@@ -64,8 +64,8 @@ def load_data_2017(inputPath,variables,criteria) :
                 chunk_df['key']=key
                 chunk_df['target']=target
                 # set weight to 1 
-                #chunk_df['totalWeight']=1
-                chunk_df['totalWeight']=chunk_arr['EvtWeight']
+                chunk_df['totalWeight']=1
+                #chunk_df['totalWeight']=chunk_arr['EvtWeight']
                 # set negativ to zero to keep continous distribution
                 chunk_df=chunk_df.clip_lower(0) 
                 data=data.append(chunk_df, ignore_index=True)
@@ -166,7 +166,8 @@ def make_plots(
         #plt.xscale('log')
         #plt.yscale('log')
     plt.ylim(ymin=0)
-    plt.savefig(plotname)
+    plt.savefig(plotname+".pdf")
+    plt.savefig(plotname+".png")
     plt.clf()
 
 def make_ks_plot(y_train, train_proba, y_test, test_proba, bins=30, fig_sz=(10, 8)):
