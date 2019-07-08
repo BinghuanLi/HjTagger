@@ -64,8 +64,9 @@ def load_data_2017(inputPath,variables,criteria) :
                 chunk_df['key']=key
                 chunk_df['target']=target
                 # set weight to 1 
-                chunk_df['totalWeight']=1
+                #chunk_df['totalWeight']=1
                 #chunk_df['totalWeight']=chunk_arr['EvtWeight']
+                chunk_df['totalWeight']=chunk_arr['EvtWgtOVnJet']
                 # set negativ to zero to keep continous distribution
                 chunk_df=chunk_df.clip_lower(0) 
                 data=data.append(chunk_df, ignore_index=True)
@@ -83,6 +84,63 @@ def load_data_2017(inputPath,variables,criteria) :
     print " length of sig, bkg: ", nS, nB
     return data
 
+def load_data_events_2017(inputPath,variables,criteria) :
+    print variables
+    my_cols_list=variables+['proces', 'key', 'target',"totalWeight"]
+    data = pd.DataFrame(columns=my_cols_list)
+    keys=['ttHnobb_2L','ttWJets_2L']
+    print keys
+    for key in keys :
+        print key
+        if 'ttH' in key or 'TTH' in key:
+                sampleName='ttHNonbb'
+                target=1
+        if 'ttW' in key or 'TTW' in key:
+                sampleName='ttWJets'
+                target=0
+        if 'ttV' in key or 'TTV' in key:
+                sampleName='ttV'
+                target=0
+        
+        inputTree = 'syncTree'
+        try: tfile = ROOT.TFile(inputPath+"/"+key+".root")
+        except : 
+            print " file "+ inputPath+"/"+key+".root deosn't exits "
+            continue
+        try: tree = tfile.Get(inputTree)
+        except : 
+            print inputTree + " deosn't exists in " + inputPath+"/"+key+".root"
+            continue
+        if tree is not None :
+            #try: chunk_arr = tree2array(tree, variables, criteria) #,  start=start, stop = stop)
+            try: chunk_arr = tree2array(tree=tree, selection=criteria) #,  start=start, stop = stop)
+            except : continue
+            else :
+                chunk_df = pd.DataFrame(chunk_arr, columns=variables)
+                #print (len(chunk_df))
+                #print (chunk_df.columns.tolist())
+                chunk_df['proces']=sampleName
+                chunk_df['key']=key
+                chunk_df['target']=target
+                # set weight to 1 
+                #chunk_df['totalWeight']=1
+                chunk_df['totalWeight']=chunk_arr['EventWeight']
+                # set negativ to zero to keep continous distribution
+                chunk_df=chunk_df.clip_lower(-1.1) 
+                data=data.append(chunk_df, ignore_index=True)
+        tfile.Close()
+        if len(data) == 0 : continue
+        nS = len(data.ix[(data.target.values == 1) & (data.key.values==key) ])
+        nB = len(data.ix[(data.target.values == 0) & (data.key.values==key) ])
+        print key,"length of sig, bkg: ", nS, nB , data.ix[ (data.key.values==key)]["totalWeight"].sum(), data.ix[(data.key.values==key)]["totalWeight"].sum()
+        nNW = len(data.ix[(data["totalWeight"].values < 0) & (data.key.values==key) ])
+        print key, "events with -ve weights", nNW
+    print (data.columns.values.tolist())
+    n = len(data)
+    nS = len(data.ix[data.target.values == 1])
+    nB = len(data.ix[data.target.values == 0])
+    print " length of sig, bkg: ", nS, nB
+    return data
 
 def val_tune_rf(estimator,x_train,y_train, w_train, x_val,y_val, w_val, params, fileToWrite):
     ''' 
@@ -170,7 +228,7 @@ def make_plots(
     plt.savefig(plotname+".png")
     plt.clf()
 
-def make_ks_plot(y_train, train_proba, y_test, test_proba, bins=30, fig_sz=(10, 8)):
+def make_ks_plot(y_train, train_proba, y_test, test_proba, bins=30, fig_sz=(10, 8), plotname="Hj_tagger_ksTest"):
     '''
         OUTPUT: outputs KS test/train overtraining plots for classifier output
         INPUTS:
@@ -238,7 +296,8 @@ def make_ks_plot(y_train, train_proba, y_test, test_proba, bins=30, fig_sz=(10, 
     plt.ylim(bottom=0)
     plt.plot([], [], ' ', label='Sig(Bkg) KS test p-value :'+str(round(ks_sig[1],2))+'('+str(round(ks_bkg[1],2))+')')
     plt.legend(loc='best', fontsize=12)
-    plt.savefig("Hj_tagger_KS_test.png")
+    plt.savefig(plotname+".pdf")
+    plt.savefig(plotname+".png")
     plt.close()
 
 

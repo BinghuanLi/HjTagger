@@ -9,7 +9,7 @@ import xgboost as xgb
 import numpy as np
 from sklearn.model_selection import KFold, train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.metrics import confusion_matrix, mean_squared_error
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, roc_auc_score
 from sklearn.feature_selection import RFECV, RFE
 from functools import partial
 import json
@@ -23,21 +23,26 @@ execfile("../python/load_data.py")
 ##############
 FeatureSelection = False
 RFESelection = False
-n_features = 10
+n_features = 13
 GridSearch = False
+postFix = "_ttWonly" 
+tagger = "2lss_ttHvsttV"
 
 
 ####################################################################################################
 ## load input variables
-with open('../scripts/input_variable_RFE_WOwgt_list.json') as json_file: 
+#with open('../scripts/input_variable_list.json') as json_file: 
+#with open('../scripts/input_variable_RFE_list.json') as json_file: 
+with open('../scripts/input_ttV_event_variables_list.json') as json_file: 
     variable_dict = json.load(json_file)
-    #variable_list = [c for c in variable_dict.keys() if variable_dict[c]=="1"]
     variable_list = [c for c in variable_dict.keys() if variable_dict[c]==1]
     variables=variable_list
 
 ## Load data
-data=load_data_2017(inputPath, variables,"Jet25_isToptag<0.5") # select only jets not tagged by TopTaggers 
+inputPath = "/afs/cern.ch/work/b/binghuan/private/TTHLep2019/Hmass/Rootplas_Fall17V1_20190209/"
+#data=load_data_2017(inputPath, variables,"Jet25_isToptag<0.5") # select only jets not tagged by TopTaggers 
 #data=load_data_2017(inputPath, variables,False) # select all jets 
+data=load_data_events_2017(inputPath,variables,False) # select all events 
 #**********************
 
 #################################################################################
@@ -59,7 +64,7 @@ if (not FeatureSelection) and ( not GridSearch):
     make_plots(BDTvariables,nbins,
     data.ix[data.target.values == 0],labelBKG, colorFast,
     data.ix[data.target.values == 1],'Signal', colorFastT,
-    "Hj_tagger_feature_distribution",
+    "{}_feature_distribution{}".format(tagger,postFix),
     printmin
     )
 
@@ -94,22 +99,21 @@ print(clf.best_params_)
 # Early-stopping
 nS = len(traindataset.ix[(traindataset.target.values == 1)])
 nB = len(traindataset.ix[(traindataset.target.values == 0)])
-print "length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", nB/nS 
+print "length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", float(nB)/float(nS) 
 
 # search and save parameters
 if GridSearch :
     # http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
     param_grid = {
-                'n_estimators': [ 500, 1000],
-                'min_child_weight': [10, 100],
-                'max_depth': [ 3, 4],
-                'learning_rate': [0.01, 0.1]
-                #'n_estimators': [ 500 ]
+                'n_estimators': [ 100, 200, 500],
+                'min_child_weight': [ 1, 10, 50],
+                'max_depth': [ 2, 3, 4],
+                'learning_rate': [0.01, 0.1, 0.3]
                 }
     scoring = "roc_auc"
     early_stopping_rounds = 150 # Will train until validation_0-auc hasn't improved in 100 rounds.
     cv=3
-    cls = xgb.XGBClassifier(scale_pos_weight = nB/nS)
+    cls = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS))
     saveopt = "GridSearch_GSCV.log"
     file = open(saveopt,"w")
     print ("opt being saved on ", saveopt)
@@ -132,7 +136,7 @@ if FeatureSelection :
     # trick to add sample weight
     if not RFESelection:
         print (" REFCV feature selections ")
-        CLS = xgb.XGBClassifier(scale_pos_weight = nB/nS)
+        CLS = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS))
         CLS.fit = partial(CLS.fit, sample_weight=(traindataset["totalWeight"].astype(np.float64)))
         selector = RFECV(CLS, step=1, cv=3)
         selector = selector.fit(
@@ -157,7 +161,7 @@ if FeatureSelection :
     
     else:
         print (" REF feature selections ")
-        CLS = xgb.XGBClassifier(scale_pos_weight = nB/nS)
+        CLS = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS))
         CLS.fit = partial(CLS.fit, sample_weight=(traindataset["totalWeight"].astype(np.float64)))
         selector = RFE(CLS, step=1, n_features_to_select = n_features)
         selector = selector.fit(
@@ -168,7 +172,7 @@ if FeatureSelection :
         file = open(saveFS,"w")
         file.write(" number of features : %d" % n_features + "\n")
         features_dict = {c: r for c, r in zip(traindataset.columns, selector.ranking_)}
-        with open('../scripts/input_variable_RFE_WOwgt_list.json', 'w') as fp:
+        with open('../scripts/input_variable_RFE_wgtOVnJet_WTtoptag_HWWvsTTW_list.json', 'w') as fp:
             json.dump(features_dict, fp)
         file.write(str(features_dict))
         print (" feature selection ranking ")
@@ -179,7 +183,13 @@ if FeatureSelection :
 
 if (not GridSearch) and (not FeatureSelection):
     
-    clf = xgb.XGBClassifier(scale_pos_weight = nB/nS)
+    param_dist = {
+                'n_estimators': 100,
+                'min_child_weight': 1,
+                'max_depth': 3,
+                'learning_rate': 0.1
+                }
+    clf = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS), **param_dist)
     
     clf.fit(
         traindataset[variables].values,
@@ -195,8 +205,8 @@ if (not GridSearch) and (not FeatureSelection):
     # The sklearn API models are picklable
     print("Pickling sklearn API models")
     # must open in binary format to pickle
-    pickle.dump(clf, open("Hjtagger.pkl", "wb"))
-    clf2 = pickle.load(open("Hjtagger.pkl", "rb"))
+    pickle.dump(clf, open("{}_{}.pkl".format(tagger,postFix), "wb"))
+    clf2 = pickle.load(open("{}_{}.pkl".format(tagger,postFix), "rb"))
     print(np.allclose(clf.predict(valdataset[variables].values), clf2.predict(valdataset[variables].values)))
     
     
@@ -207,11 +217,11 @@ if (not GridSearch) and (not FeatureSelection):
     proba = clf.predict_proba(traindataset[variables].values )
     fpr, tpr, thresholds = roc_curve(traindataset["target"], proba[:,1],
         sample_weight=(traindataset["totalWeight"].astype(np.float64)) )
-    train_auc = auc(fpr, tpr)
+    train_auc = auc(fpr, tpr, reorder = True)
     print("XGBoost train set auc - {}".format(train_auc))
     probaT = clf.predict_proba(valdataset[variables].values )
     fprt, tprt, thresholds = roc_curve(valdataset["target"], probaT[:,1], sample_weight=(valdataset["totalWeight"].astype(np.float64))  )
-    test_auct = auc(fprt, tprt)
+    test_auct = auc(fprt, tprt, reorder = True)
     print("XGBoost test set auc - {}".format(test_auct))
     fig, ax = plt.subplots(figsize=(6, 6))
     ## ROC curve
@@ -230,8 +240,8 @@ if (not GridSearch) and (not FeatureSelection):
     ax.grid()
     #fig.savefig("{}/{}_{}_{}_{}_roc.png".format(channel,bdtType,trainvar,str(len(trainVars(False))),hyppar))
     #fig.savefig("{}/{}_{}_{}_{}_roc.pdf".format(channel,bdtType,trainvar,str(len(trainVars(False))),hyppar))
-    fig.savefig("Hj_tagger_roc.png")
-    fig.savefig("Hj_tagger_roc.pdf")
+    fig.savefig("{}_roc{}.png".format(tagger,postFix))
+    fig.savefig("{}_roc{}.pdf".format(tagger,postFix))
     
     ###########################################################################
     ## feature importance plot
@@ -244,8 +254,8 @@ if (not GridSearch) and (not FeatureSelection):
     feat_imp = pd.Series(f_score_dict).sort_values(ascending=True)
     feat_imp.plot(kind='barh', title='Feature Importances')
     fig.tight_layout()
-    fig.savefig("Hj_tagger_feature_importance.png")
-    fig.savefig("Hj_tagger_feature_importance.pdf")
+    fig.savefig("{}_feature_importance{}.png".format(tagger,postFix))
+    fig.savefig("{}_feature_importance{}.pdf".format(tagger,postFix))
     
     
     ###########################################################################
@@ -276,8 +286,8 @@ if (not GridSearch) and (not FeatureSelection):
             fig.colorbar(cax)
             fig.tight_layout()
             #plt.subplots_adjust(left=0.9, right=0.9, top=0.9, bottom=0.1)
-            fig.savefig("Hj_tagger_feature_{}_correlation.png".format(label))
-            fig.savefig("Hj_tagger_feature_{}_correlation.pdf".format(label))
+            fig.savefig("{}_feature_{}_correlation{}.png".format(tagger,label,postFix))
+            fig.savefig("{}_feature_{}_correlation{}.pdf".format(tagger,label,postFix))
             ax.clear()
     
     
@@ -285,5 +295,5 @@ if (not GridSearch) and (not FeatureSelection):
     # plot probability distribution and do KS-test
     ###########################################################################
     if 1>0: # FIXME
-        make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1])
+        make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1], plotname="{}_ksTest{}".format(tagger,postFix))
     
