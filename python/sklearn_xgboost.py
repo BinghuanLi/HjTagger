@@ -16,7 +16,7 @@ import json
 
 rng = np.random.RandomState(31337)
 
-execfile("../python/load_data.py")
+exec(open("../python/load_data.py").read())
 
 ##############
 ## options ##
@@ -25,25 +25,31 @@ FeatureSelection = False
 RFESelection = False
 n_features = 13
 GridSearch = False
-postFix = "_ttWonly" 
-tagger = "2lss_ttHvsttV"
-
+postFix = "_2018test" 
+tagger = "_vsttW"
+ROC_test = True
 
 ####################################################################################################
 ## load input variables
-#with open('../scripts/input_variable_list.json') as json_file: 
+with open('../scripts/input_variable_list.json') as json_file: 
 #with open('../scripts/input_variable_RFE_list.json') as json_file: 
-with open('../scripts/input_ttV_event_variables_list.json') as json_file: 
+#with open('../scripts/input_ttV_event_variables_list.json') as json_file: 
     variable_dict = json.load(json_file)
     variable_list = [c for c in variable_dict.keys() if variable_dict[c]==1]
     variables=variable_list
 
 ## Load data
-inputPath = "/afs/cern.ch/work/b/binghuan/private/TTHLep2019/Hmass/Rootplas_Fall17V1_20190209/"
+inputPath = "/home/binghuan/Work/TTHLep/TTHLep_RunII/ttH_hjtagger_xgboost/data/"
+specs = ["Jet25_isToptag","run","ls","nEvent","DataEra"]
 #data=load_data_2017(inputPath, variables,"Jet25_isToptag<0.5") # select only jets not tagged by TopTaggers 
-#data=load_data_2017(inputPath, variables,False) # select all jets 
-data=load_data_events_2017(inputPath,variables,False) # select all events 
+data=load_data_2017(inputPath, variables, specs,False) # select all jets 
+data_test=load_data_events_2017(inputPath,variables,specs,False) # select all events 
 #**********************
+
+data = data.fillna(0.)
+data.to_csv("data.csv")
+
+data_test = data_test.fillna(0.)
 
 #################################################################################
 ### Plot histograms of training variables
@@ -99,7 +105,7 @@ print(clf.best_params_)
 # Early-stopping
 nS = len(traindataset.ix[(traindataset.target.values == 1)])
 nB = len(traindataset.ix[(traindataset.target.values == 0)])
-print "length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", float(nB)/float(nS) 
+print ("length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", float(nB)/float(nS) )
 
 # search and save parameters
 if GridSearch :
@@ -172,7 +178,7 @@ if FeatureSelection :
         file = open(saveFS,"w")
         file.write(" number of features : %d" % n_features + "\n")
         features_dict = {c: r for c, r in zip(traindataset.columns, selector.ranking_)}
-        with open('../scripts/input_variable_RFE_wgtOVnJet_WTtoptag_HWWvsTTW_list.json', 'w') as fp:
+        with open('../scripts/input_variable_RFE_list.json', 'w') as fp:
             json.dump(features_dict, fp)
         file.write(str(features_dict))
         print (" feature selection ranking ")
@@ -211,10 +217,11 @@ if (not GridSearch) and (not FeatureSelection):
     
     
     # Plot ROC curve
-    print variables
-    print traindataset[variables].columns.values.tolist()
+    print (variables)
+    print (traindataset[variables].columns.values.tolist())
     print ("XGBoost trained")
     proba = clf.predict_proba(traindataset[variables].values )
+    # print (proba)
     fpr, tpr, thresholds = roc_curve(traindataset["target"], proba[:,1],
         sample_weight=(traindataset["totalWeight"].astype(np.float64)) )
     train_auc = auc(fpr, tpr, reorder = True)
@@ -247,7 +254,7 @@ if (not GridSearch) and (not FeatureSelection):
     ## feature importance plot
     ###########################################################################
     fig, ax = plt.subplots()
-    f_score_dict =clf.booster().get_fscore()
+    f_score_dict =clf.get_booster().get_fscore()
     print(" f_score_dict ")
     print( f_score_dict )
     f_score_dict = {variables[int(k[1:])] : v for k,v in f_score_dict.items()}
@@ -296,4 +303,72 @@ if (not GridSearch) and (not FeatureSelection):
     ###########################################################################
     if 1>0: # FIXME
         make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1], plotname="{}_ksTest{}".format(tagger,postFix))
+
+
+    ###########################################################
+    # application on per-event level
+    ########################################################### 
+    if 1>0: # FIXME
+        dataT = group_event(traindataset,proba[:,1])
+        nS = len(dataT.iloc[dataT.target.values == 1])
+        nB = len(dataT.iloc[dataT.target.values == 0])
+        print ("traindataset per-event len of sig, bkg : ", nS, nB) 
+        FPR, TPR, thresholds = roc_curve(dataT["target"], dataT["y_predict"].values,
+            sample_weight=(dataT["totalWeight"].astype(np.float64)) )
+        train_auc = auc(FPR, TPR, reorder = True)
+        print("XGBoost per-event train set auc - {}".format(train_auc))
+        dataT.to_csv("dataT.csv",columns=["run","ls","nEvent","y_predict","target"])
+
+        dataV = group_event(valdataset,probaT[:,1])
+        FPRV, TPRV, thresholds = roc_curve(dataV["target"], dataV["y_predict"].values,
+            sample_weight=(dataV["totalWeight"].astype(np.float64)) )
+        test_auc = auc(FPRV, TPRV, reorder = True)
+        nS = len(dataV.iloc[dataV.target.values == 1])
+        nB = len(dataV.iloc[dataV.target.values == 0])
+        print ("testdataset per-event len of sig, bkg : ", nS, nB) 
+        print("XGBoost per-event test set auc - {}".format(test_auc))
+        dataV.to_csv("dataV.csv",columns=["run","ls","nEvent","y_predict","target"])
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ## ROC curve
+        ax.plot(FPR, TPR, lw=1, label='XGB train (area = %0.3f)'%(train_auc))
+        ax.plot(FPRV, TPRV, lw=1, label='XGB test (area = %0.3f)'%(test_auc))
+        ax.set_ylim([0.0,1.0])
+        ax.set_xlim([0.0,1.0])
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.legend(loc="lower right")
+        ax.grid()
+        fig.savefig("{}_roc_perEvent_{}.png".format(tagger,postFix))
+        fig.savefig("{}_roc_perEvent_{}.pdf".format(tagger,postFix))
+    
+if ROC_test:
+    clf3 = pickle.load(open("{}_{}.pkl".format(tagger,postFix), "rb"))
+    
+    # Plot ROC curve
+    print (variables)
+    print (data_test.columns.values.tolist())
+    data_test.to_csv("data_test.csv")
+    print ("XGBoost test")
+    proba3 = clf3.predict_proba(data_test[variables].values)
+    data3T = group_event(data_test, proba3[:,1])
+    data3T.to_csv("data3T.csv")
+    print(data3T["target"])
+    fpr3, tpr3, thresholds = roc_curve(data3T["target"], data3T["y_predict"].values,
+        sample_weight=(data3T["totalWeight"].astype(np.float64)) )
+    test3_auc = auc(fpr3, tpr3, reorder = True)
+    nS = len(data3T.iloc[data3T.target.values == 1])
+    nB = len(data3T.iloc[data3T.target.values == 0])
+    print ("test per-event len of sig, bkg : ", nS, nB) 
+    print("XGBoost test per-event auc - {}".format(test3_auc))
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ## ROC curve
+    ax.plot(fpr3, tpr3, lw=1, label='XGB test (area = %0.3f)'%(test3_auc))
+    ax.set_ylim([0.0,1.0])
+    ax.set_xlim([0.0,1.0])
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.legend(loc="lower right")
+    ax.grid()
+    fig.savefig("{}_roc_test-per-Event_{}.png".format(tagger,postFix))
+    fig.savefig("{}_roc_test-per-Event_{}.pdf".format(tagger,postFix))
     

@@ -18,20 +18,20 @@ from random import randint
 from scipy import stats
 from matplotlib import pyplot as plt
 
-inputPath = "../data/"
+inputPath = "/home/binghuan/Work/TTHLep/TTHLep_RunII/ttH_hjtagger_xgboost/data/"
 #variables = ["Jet_pt","Jet_qg","Jet_lepdrmin","Jet_lepdrmax","Jet_bDiscriminator"]#"EvtWeight","EvtWgtOVnJet"]
-variables = ["Jet25_pt","Jet25_qg","Jet25_lepdrmin","Jet25_lepdrmax","Jet25_bDiscriminator"]#"Jet25_bjdeta","Jet25_chargedEmEnergyFraction","Jet25_eta","Jet25_mass","Jet25_nonjdr","Jet25_nonjdilepptratio","Jet25_numberOfConstituents"]
+variables = ["Jet25_pt","Jet25_qg","Jet25_lepdrmin","Jet25_lepdrmax","Jet25_bDiscriminator"]
 
 #load_data_2017(inputPath, variables, False)  # select all jets
-def load_data_2017(inputPath,variables,criteria) :
-    print variables
-    my_cols_list=variables+['proces', 'key', 'target',"totalWeight"]
+def load_data_2017(inputPath,variables, spectators, criteria):
+    print (variables)
+    my_cols_list=variables+spectators+['proces', 'key', 'target',"totalWeight"]
     data = pd.DataFrame(columns=my_cols_list)
-    keys=['TTH_hww_HJet','TTW_NJet']
+    keys=['ttHnobb_2018_HJet','ttWJets_2018_NJet']
     #keys=['TTH_HJet','TTV_NJet']
-    print keys
+    print (keys)
     for key in keys :
-        print key
+        print (key)
         if 'ttH' in key or 'TTH' in key:
                 sampleName='ttHNonbb'
         if 'ttW' in key or 'TTW' in key:
@@ -46,52 +46,53 @@ def load_data_2017(inputPath,variables,criteria) :
         inputTree = 'syncTree'
         try: tfile = ROOT.TFile(inputPath+"/"+key+".root")
         except : 
-            print " file "+ inputPath+"/"+key+".root deosn't exits "
+            print (" file "+ inputPath+"/"+key+".root deosn't exits ")
             continue
         try: tree = tfile.Get(inputTree)
         except : 
-            print inputTree + " deosn't exists in " + inputPath+"/"+key+".root"
+            print (inputTree + " deosn't exists in " + inputPath+"/"+key+".root")
             continue
         if tree is not None :
             #try: chunk_arr = tree2array(tree, variables, criteria) #,  start=start, stop = stop)
             try: chunk_arr = tree2array(tree=tree, selection=criteria) #,  start=start, stop = stop)
             except : continue
             else :
-                chunk_df = pd.DataFrame(chunk_arr, columns=variables)
+                chunk_df = pd.DataFrame(chunk_arr, columns=(variables+spectators))
                 #print (len(chunk_df))
                 #print (chunk_df.columns.tolist())
+                # set negativ to zero to keep continous distribution
+                chunk_df=chunk_df.apply(lambda x : np.absolute(x) if x.name in ["Jet25_eta"] else x)
+                chunk_df=chunk_df.clip_lower(0.) 
+                # set weight to 1 
+                #chunk_df['totalWeight']=1
+                chunk_df['totalWeight']=chunk_arr['EvtWeight']
+                #chunk_df['totalWeight']=chunk_arr['EvtWgtOVnJet']
                 chunk_df['proces']=sampleName
                 chunk_df['key']=key
                 chunk_df['target']=target
-                # set weight to 1 
-                #chunk_df['totalWeight']=1
-                #chunk_df['totalWeight']=chunk_arr['EvtWeight']
-                chunk_df['totalWeight']=chunk_arr['EvtWgtOVnJet']
-                # set negativ to zero to keep continous distribution
-                chunk_df=chunk_df.clip_lower(0) 
                 data=data.append(chunk_df, ignore_index=True)
         tfile.Close()
         if len(data) == 0 : continue
         nS = len(data.ix[(data.target.values == 1) & (data.key.values==key) ])
         nB = len(data.ix[(data.target.values == 0) & (data.key.values==key) ])
-        print key,"length of sig, bkg: ", nS, nB , data.ix[ (data.key.values==key)]["totalWeight"].sum(), data.ix[(data.key.values==key)]["totalWeight"].sum()
+        print (key,"length of sig, bkg: ", nS, nB , data.ix[ (data.key.values==key)]["totalWeight"].sum(), data.ix[(data.key.values==key)]["totalWeight"].sum())
         nNW = len(data.ix[(data["totalWeight"].values < 0) & (data.key.values==key) ])
-        print key, "events with -ve weights", nNW
+        print (key, "events with -ve weights", nNW)
     print (data.columns.values.tolist())
     n = len(data)
     nS = len(data.ix[data.target.values == 1])
     nB = len(data.ix[data.target.values == 0])
-    print " length of sig, bkg: ", nS, nB
+    print (" length of sig, bkg: ", nS, nB)
     return data
 
-def load_data_events_2017(inputPath,variables,criteria) :
-    print variables
-    my_cols_list=variables+['proces', 'key', 'target',"totalWeight"]
+def load_data_events_2017(inputPath,variables, spectators, criteria):
+    print (variables)
+    my_cols_list=variables+spectators+['proces', 'key', 'target',"totalWeight"]
     data = pd.DataFrame(columns=my_cols_list)
-    keys=['ttHnobb_2L','ttWJets_2L']
-    print keys
+    keys=['ttHnobb_2018_Test','ttWJets_2018_Test']
+    print (keys)
     for key in keys :
-        print key
+        print (key)
         if 'ttH' in key or 'TTH' in key:
                 sampleName='ttHNonbb'
                 target=1
@@ -105,41 +106,43 @@ def load_data_events_2017(inputPath,variables,criteria) :
         inputTree = 'syncTree'
         try: tfile = ROOT.TFile(inputPath+"/"+key+".root")
         except : 
-            print " file "+ inputPath+"/"+key+".root deosn't exits "
+            print (" file "+ inputPath+"/"+key+".root deosn't exits ")
             continue
         try: tree = tfile.Get(inputTree)
         except : 
-            print inputTree + " deosn't exists in " + inputPath+"/"+key+".root"
+            print (inputTree + " deosn't exists in " + inputPath+"/"+key+".root")
             continue
         if tree is not None :
             #try: chunk_arr = tree2array(tree, variables, criteria) #,  start=start, stop = stop)
             try: chunk_arr = tree2array(tree=tree, selection=criteria) #,  start=start, stop = stop)
             except : continue
             else :
-                chunk_df = pd.DataFrame(chunk_arr, columns=variables)
+                chunk_df = pd.DataFrame(chunk_arr, columns=(variables+spectators))
                 #print (len(chunk_df))
                 #print (chunk_df.columns.tolist())
+                # set negativ to zero to keep continous distribution
+                chunk_df=chunk_df.apply(lambda x : np.absolute(x) if x.name in ["Jet25_eta"] else x)
+                chunk_df=chunk_df.clip_lower(0.) 
                 chunk_df['proces']=sampleName
                 chunk_df['key']=key
                 chunk_df['target']=target
                 # set weight to 1 
                 #chunk_df['totalWeight']=1
-                chunk_df['totalWeight']=chunk_arr['EventWeight']
-                # set negativ to zero to keep continous distribution
-                chunk_df=chunk_df.clip_lower(-1.1) 
+                chunk_df['totalWeight']=chunk_arr['EvtWeight']
+                #chunk_df['totalWeight']=chunk_arr['EvtWgtOVnJet']
                 data=data.append(chunk_df, ignore_index=True)
         tfile.Close()
         if len(data) == 0 : continue
         nS = len(data.ix[(data.target.values == 1) & (data.key.values==key) ])
         nB = len(data.ix[(data.target.values == 0) & (data.key.values==key) ])
-        print key,"length of sig, bkg: ", nS, nB , data.ix[ (data.key.values==key)]["totalWeight"].sum(), data.ix[(data.key.values==key)]["totalWeight"].sum()
+        print (key,"length of sig, bkg: ", nS, nB , data.ix[ (data.key.values==key)]["totalWeight"].sum(), data.ix[(data.key.values==key)]["totalWeight"].sum())
         nNW = len(data.ix[(data["totalWeight"].values < 0) & (data.key.values==key) ])
-        print key, "events with -ve weights", nNW
+        print (key, "events with -ve weights", nNW)
     print (data.columns.values.tolist())
     n = len(data)
     nS = len(data.ix[data.target.values == 1])
     nB = len(data.ix[data.target.values == 0])
-    print " length of sig, bkg: ", nS, nB
+    print (" length of sig, bkg: ", nS, nB)
     return data
 
 def val_tune_rf(estimator,x_train,y_train, w_train, x_val,y_val, w_val, params, fileToWrite):
@@ -154,15 +157,15 @@ def val_tune_rf(estimator,x_train,y_train, w_train, x_val,y_val, w_val, params, 
     results = []
     for param in params_list:
         print ("Date: ", time.asctime( time.localtime(time.time()) ))
-        print '=========  ',param
+        print ('=========  ',param)
         estimator.set_params(**param)
         estimator.fit(x_train,y_train, sample_weight=w_train)
         preds_prob = estimator.predict_proba(x_val)
         preds_prob_train = estimator.predict_proba(x_train)
-        print preds_prob
-        print preds_prob[:,1]
+        print (preds_prob)
+        print (preds_prob[:,1])
         result = roc_auc_score(y_val,preds_prob[:,1], sample_weight = w_val)
-        print 'roc_auc_score : %f'%result
+        print ('roc_auc_score : %f'%result)
         results.append((param,result))
         fileToWrite.write(str(param)+"\n")
         fileToWrite.write(str(roc_auc_score(y_val,preds_prob[:,1],sample_weight=w_val))+" "+str(roc_auc_score(y_train,preds_prob_train[:,1],sample_weight = w_train)))
@@ -300,4 +303,9 @@ def make_ks_plot(y_train, train_proba, y_test, test_proba, bins=30, fig_sz=(10, 
     plt.savefig(plotname+".png")
     plt.close()
 
-
+def group_event(data, predict):
+   data["y_predict"]=predict
+   idx = data.groupby(["run","ls","nEvent","key"])["y_predict"].transform(max) == data["y_predict"]
+   selected_data = data[idx]
+    
+   return selected_data
