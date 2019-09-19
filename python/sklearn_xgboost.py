@@ -4,6 +4,8 @@
   Modified by Binghuan Li    --  3 Dec 2018 
 '''
 
+import sys, os, subprocess
+import optparse
 import pickle
 import xgboost as xgb
 import numpy as np
@@ -18,6 +20,34 @@ rng = np.random.RandomState(31337)
 
 exec(open("../python/load_data.py").read())
 
+### optparse ####
+usage = 'usage: %prog [options]'
+parser = optparse.OptionParser(usage)
+parser.add_option('-y', '--year',        dest='year'  ,      help='the data taking year',      default='2018',        type='string')
+parser.add_option('-o', '--out',        dest='outputDir'  ,      help='the output base dir',      default='../outputs/test',        type='string')
+
+(opt, args) = parser.parse_args()
+
+year = opt.year 
+outputDir = opt.outputDir 
+
+outputPlotDir = outputDir + "/plots"
+outputWgtDir = outputDir + "/weights"
+outputLogDir = outputDir + "/logs"
+
+print(" output plots saved in: ", outputPlotDir)
+print(" output weights saved in: ", outputWgtDir)
+print(" output logs saved in: ", outputLogDir)
+
+if not os.path.exists(outputPlotDir):
+    os.popen("mkdir -p "+outputPlotDir)
+
+if not os.path.exists(outputWgtDir):
+    os.popen("mkdir -p "+outputWgtDir)
+
+if not os.path.exists(outputLogDir):
+    os.popen("mkdir -p "+outputLogDir)
+
 ##############
 ## options ##
 ##############
@@ -25,9 +55,9 @@ FeatureSelection = False
 RFESelection = False
 n_features = 13
 GridSearch = False
-postFix = "_2018test" 
-tagger = "_vsttW"
-ROC_test = True
+postFix = "alljets" 
+tagger = "ttWbkg"
+ROC_test = False
 
 ####################################################################################################
 ## load input variables
@@ -42,14 +72,11 @@ with open('../scripts/input_variable_list.json') as json_file:
 inputPath = "/home/binghuan/Work/TTHLep/TTHLep_RunII/ttH_hjtagger_xgboost/data/"
 specs = ["Jet25_isToptag","run","ls","nEvent","DataEra"]
 #data=load_data_2017(inputPath, variables,"Jet25_isToptag<0.5") # select only jets not tagged by TopTaggers 
-data=load_data_2017(inputPath, variables, specs,False) # select all jets 
-data_test=load_data_events_2017(inputPath,variables,specs,False) # select all events 
+data=load_data_2017(inputPath, variables, specs, year, False) # select all jets 
 #**********************
 
 data = data.fillna(0.)
-data.to_csv("data.csv")
-
-data_test = data_test.fillna(0.)
+#data.to_csv("data.csv")
 
 #################################################################################
 ### Plot histograms of training variables
@@ -70,7 +97,7 @@ if (not FeatureSelection) and ( not GridSearch):
     make_plots(BDTvariables,nbins,
     data.ix[data.target.values == 0],labelBKG, colorFast,
     data.ix[data.target.values == 1],'Signal', colorFastT,
-    "{}_feature_distribution{}".format(tagger,postFix),
+    "{}/{}_feature_distribution{}_{}".format(outputPlotDir,tagger,postFix,year),
     printmin
     )
 
@@ -120,7 +147,7 @@ if GridSearch :
     early_stopping_rounds = 150 # Will train until validation_0-auc hasn't improved in 100 rounds.
     cv=3
     cls = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS))
-    saveopt = "GridSearch_GSCV.log"
+    saveopt = "{}/GridSearch_GSCV_{}.log".format(outputLogDir,year)
     file = open(saveopt,"w")
     print ("opt being saved on ", saveopt)
     #file.write("Date: "+ str(time.asctime( time.localtime(time.time()) ))+"\n")
@@ -149,7 +176,7 @@ if FeatureSelection :
                 traindataset[variables].values,
                 traindataset.target.astype(np.bool)
         )
-        saveFS = "FeatureSelection_RFECV.log"
+        saveFS = "{}/FeatureSelection_RFECV_{}.log".format(outputLogDir, year)
         file = open(saveFS,"w")
         file.write("Optimal number of features : %d" % selector.n_features_ + "\n")
         file.write(str({c: r for c, r in zip(traindataset.columns, selector.ranking_)}))
@@ -162,8 +189,8 @@ if FeatureSelection :
         ax.set_xlabel("Number of features selected")
         ax.set_ylabel("Cross validation score (nb of correct classifications)")
         ax.plot(range(1, len(selector.grid_scores_) + 1), selector.grid_scores_)
-        fig.savefig("Hj_feature_selection.png")
-        fig.savefig("Hj_feature_selection.pdf")
+        fig.savefig("{}/Hj_feature_selection_{}.png".format(outputPlotDir, year))
+        fig.savefig("{}/Hj_feature_selection_{}.pdf".format(outputPlotDir, year))
     
     else:
         print (" REF feature selections ")
@@ -174,7 +201,7 @@ if FeatureSelection :
                 traindataset[variables].values,
                 traindataset.target.astype(np.bool)
         )
-        saveFS = "FeatureSelection_RFE.log"
+        saveFS = "{}/FeatureSelection_RFE_{}.log".format(outputLogDir, year)
         file = open(saveFS,"w")
         file.write(" number of features : %d" % n_features + "\n")
         features_dict = {c: r for c, r in zip(traindataset.columns, selector.ranking_)}
@@ -211,8 +238,8 @@ if (not GridSearch) and (not FeatureSelection):
     # The sklearn API models are picklable
     print("Pickling sklearn API models")
     # must open in binary format to pickle
-    pickle.dump(clf, open("{}_{}.pkl".format(tagger,postFix), "wb"))
-    clf2 = pickle.load(open("{}_{}.pkl".format(tagger,postFix), "rb"))
+    pickle.dump(clf, open("{}/{}_{}_{}.pkl".format(outputWgtDir, tagger, postFix, year), "wb"))
+    clf2 = pickle.load(open("{}/{}_{}_{}.pkl".format(outputWgtDir, tagger, postFix, year), "rb"))
     print(np.allclose(clf.predict(valdataset[variables].values), clf2.predict(valdataset[variables].values)))
     
     
@@ -247,8 +274,8 @@ if (not GridSearch) and (not FeatureSelection):
     ax.grid()
     #fig.savefig("{}/{}_{}_{}_{}_roc.png".format(channel,bdtType,trainvar,str(len(trainVars(False))),hyppar))
     #fig.savefig("{}/{}_{}_{}_{}_roc.pdf".format(channel,bdtType,trainvar,str(len(trainVars(False))),hyppar))
-    fig.savefig("{}_roc{}.png".format(tagger,postFix))
-    fig.savefig("{}_roc{}.pdf".format(tagger,postFix))
+    fig.savefig("{}/{}_roc{}_{}.png".format(outputPlotDir, tagger,postFix, year))
+    fig.savefig("{}/{}_roc{}_{}.pdf".format(outputPlotDir, tagger,postFix, year))
     
     ###########################################################################
     ## feature importance plot
@@ -261,8 +288,8 @@ if (not GridSearch) and (not FeatureSelection):
     feat_imp = pd.Series(f_score_dict).sort_values(ascending=True)
     feat_imp.plot(kind='barh', title='Feature Importances')
     fig.tight_layout()
-    fig.savefig("{}_feature_importance{}.png".format(tagger,postFix))
-    fig.savefig("{}_feature_importance{}.pdf".format(tagger,postFix))
+    fig.savefig("{}/{}_feature_importance{}_{}.png".format(outputPlotDir, tagger,postFix, year))
+    fig.savefig("{}/{}_feature_importance{}_{}.pdf".format(outputPlotDir, tagger,postFix, year))
     
     
     ###########################################################################
@@ -293,8 +320,8 @@ if (not GridSearch) and (not FeatureSelection):
             fig.colorbar(cax)
             fig.tight_layout()
             #plt.subplots_adjust(left=0.9, right=0.9, top=0.9, bottom=0.1)
-            fig.savefig("{}_feature_{}_correlation{}.png".format(tagger,label,postFix))
-            fig.savefig("{}_feature_{}_correlation{}.pdf".format(tagger,label,postFix))
+            fig.savefig("{}/{}_feature_{}_correlation{}_{}.png".format(outputPlotDir, tagger,label,postFix, year))
+            fig.savefig("{}/{}_feature_{}_correlation{}_{}.pdf".format(outputPlotDir, tagger,label,postFix, year))
             ax.clear()
     
     
@@ -302,7 +329,7 @@ if (not GridSearch) and (not FeatureSelection):
     # plot probability distribution and do KS-test
     ###########################################################################
     if 1>0: # FIXME
-        make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1], plotname="{}_ksTest{}".format(tagger,postFix))
+        make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1], plotname="{}/{}_ksTest{}_{}".format(outputPlotDir,tagger,postFix, year))
 
 
     ###########################################################
@@ -317,7 +344,7 @@ if (not GridSearch) and (not FeatureSelection):
             sample_weight=(dataT["totalWeight"].astype(np.float64)) )
         train_auc = auc(FPR, TPR, reorder = True)
         print("XGBoost per-event train set auc - {}".format(train_auc))
-        dataT.to_csv("dataT.csv",columns=["run","ls","nEvent","y_predict","target"])
+        #dataT.to_csv("dataT.csv",columns=["run","ls","nEvent","y_predict","target"])
 
         dataV = group_event(valdataset,probaT[:,1])
         FPRV, TPRV, thresholds = roc_curve(dataV["target"], dataV["y_predict"].values,
@@ -327,7 +354,7 @@ if (not GridSearch) and (not FeatureSelection):
         nB = len(dataV.iloc[dataV.target.values == 0])
         print ("testdataset per-event len of sig, bkg : ", nS, nB) 
         print("XGBoost per-event test set auc - {}".format(test_auc))
-        dataV.to_csv("dataV.csv",columns=["run","ls","nEvent","y_predict","target"])
+        #dataV.to_csv("dataV.csv",columns=["run","ls","nEvent","y_predict","target"])
         fig, ax = plt.subplots(figsize=(6, 6))
         ## ROC curve
         ax.plot(FPR, TPR, lw=1, label='XGB train (area = %0.3f)'%(train_auc))
@@ -338,37 +365,6 @@ if (not GridSearch) and (not FeatureSelection):
         ax.set_ylabel('True Positive Rate')
         ax.legend(loc="lower right")
         ax.grid()
-        fig.savefig("{}_roc_perEvent_{}.png".format(tagger,postFix))
-        fig.savefig("{}_roc_perEvent_{}.pdf".format(tagger,postFix))
-    
-if ROC_test:
-    clf3 = pickle.load(open("{}_{}.pkl".format(tagger,postFix), "rb"))
-    
-    # Plot ROC curve
-    print (variables)
-    print (data_test.columns.values.tolist())
-    data_test.to_csv("data_test.csv")
-    print ("XGBoost test")
-    proba3 = clf3.predict_proba(data_test[variables].values)
-    data3T = group_event(data_test, proba3[:,1])
-    data3T.to_csv("data3T.csv")
-    print(data3T["target"])
-    fpr3, tpr3, thresholds = roc_curve(data3T["target"], data3T["y_predict"].values,
-        sample_weight=(data3T["totalWeight"].astype(np.float64)) )
-    test3_auc = auc(fpr3, tpr3, reorder = True)
-    nS = len(data3T.iloc[data3T.target.values == 1])
-    nB = len(data3T.iloc[data3T.target.values == 0])
-    print ("test per-event len of sig, bkg : ", nS, nB) 
-    print("XGBoost test per-event auc - {}".format(test3_auc))
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ## ROC curve
-    ax.plot(fpr3, tpr3, lw=1, label='XGB test (area = %0.3f)'%(test3_auc))
-    ax.set_ylim([0.0,1.0])
-    ax.set_xlim([0.0,1.0])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.legend(loc="lower right")
-    ax.grid()
-    fig.savefig("{}_roc_test-per-Event_{}.png".format(tagger,postFix))
-    fig.savefig("{}_roc_test-per-Event_{}.pdf".format(tagger,postFix))
+        fig.savefig("{}/{}_roc_perEvent_{}.png".format(outputPlotDir, tagger,postFix, year))
+        fig.savefig("{}/{}_roc_perEvent_{}.pdf".format(outputPlotDir, tagger,postFix, year))
     

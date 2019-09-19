@@ -23,12 +23,13 @@ inputPath = "/home/binghuan/Work/TTHLep/TTHLep_RunII/ttH_hjtagger_xgboost/data/"
 variables = ["Jet25_pt","Jet25_qg","Jet25_lepdrmin","Jet25_lepdrmax","Jet25_bDiscriminator"]
 
 #load_data_2017(inputPath, variables, False)  # select all jets
-def load_data_2017(inputPath,variables, spectators, criteria):
+def load_data_2017(inputPath,variables, spectators, year, criteria):
     print (variables)
     my_cols_list=variables+spectators+['proces', 'key', 'target',"totalWeight"]
     data = pd.DataFrame(columns=my_cols_list)
-    keys=['ttHnobb_2018_HJet','ttWJets_2018_NJet']
-    #keys=['TTH_HJet','TTV_NJet']
+    #keys=['ttHnobb_2018_HJet','ttWJets_2018_NJet']
+    keys=['ttHnobb_%s_HJet'%year,'ttWJets_%s_NJet'%year]
+    #keys=['ttHnobb_2016_HJet','ttWJets_2016_NJet']
     print (keys)
     for key in keys :
         print (key)
@@ -85,11 +86,11 @@ def load_data_2017(inputPath,variables, spectators, criteria):
     print (" length of sig, bkg: ", nS, nB)
     return data
 
-def load_data_events_2017(inputPath,variables, spectators, criteria):
+def load_data_events_2017(inputPath,variables, spectators, year, criteria):
     print (variables)
     my_cols_list=variables+spectators+['proces', 'key', 'target',"totalWeight"]
     data = pd.DataFrame(columns=my_cols_list)
-    keys=['ttHnobb_2018_Test','ttWJets_2018_Test']
+    keys=['ttHnobb_%s_Test'%year,'ttWJets_%s_Test'%year]
     print (keys)
     for key in keys :
         print (key)
