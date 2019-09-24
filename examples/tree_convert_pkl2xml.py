@@ -196,7 +196,8 @@ def xgbtree_to_nodetree(tree):
             nodes[node_index] = Tree(node_index, [], my_parent, node_depth, ("val", val))
 
         #insert node into final node dict
-        if nodes.has_key(my_parent):
+        #if nodes.has_key(my_parent):
+        if my_parent in nodes:
             nodes[my_parent].children += [node_index]
 
         prev_depth = node_depth
@@ -390,10 +391,10 @@ class BDTxgboost(BDT):
             kind = "multiclass"
         else:
             kind = "regression"
-        print model.objective, kind
+        print (model.objective, kind)
 
         trees = []
-        for tree_dump in model.booster().get_dump():
+        for tree_dump in model.get_booster().get_dump():
             tree = xgbtree_to_nodetree(tree_dump)
             trees += [tree]
 
@@ -401,17 +402,17 @@ class BDTxgboost(BDT):
 
     def eval(self, features):
         proba = self.model.predict_proba(features)[:, 1]
-        print "eval (before transformation) = ", proba
+        print ("eval (before transformation) = ", proba)
 
         #invert sigmoid
         proba = -np.log(1.0/proba - 1.0)
 
         #apply TMVA transformation
         proba = 2.0 / (1.0 + np.exp(-2.0*proba)) - 1
-        print "eval (After transformation) = ", proba
+        print ("eval (After transformation) = ", proba)
 
         x = 1/(1+np.sqrt((1-proba)/(1+proba)))
-        print "eval (After inverse transformation) = ", x        
+        print ("eval (After inverse transformation) = ", x        )
 
         return proba
 
