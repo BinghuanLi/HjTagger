@@ -3,7 +3,7 @@
   Original script in ../examples/data_manager_Tallin.py is developped by Alexandra from TLL group
   Modified by Binghuan Li    --  1 Dec 2018 
 '''
-
+import sklearn
 import sys , time
 import itertools as it
 import numpy as np
@@ -17,6 +17,7 @@ import math , array
 from random import randint
 from scipy import stats
 from matplotlib import pyplot as plt
+from sklearn.model_selection import KFold
 
 inputPath = "/home/binghuan/Work/TTHLep/TTHLep_RunII/ttH_hjtagger_xgboost/data/"
 #variables = ["Jet_pt","Jet_qg","Jet_lepdrmin","Jet_lepdrmax","Jet_bDiscriminator"]#"EvtWeight","EvtWgtOVnJet"]
@@ -66,8 +67,8 @@ def load_data_2017(inputPath,variables, spectators, year, criteria):
                 chunk_df=chunk_df.clip_lower(0.) 
                 # set weight to 1 
                 #chunk_df['totalWeight']=1
-                chunk_df['totalWeight']=chunk_arr['EvtWeight']
-                #chunk_df['totalWeight']=chunk_arr['EvtWgtOVnJet']
+                #chunk_df['totalWeight']=chunk_arr['EvtWeight']
+                chunk_df['totalWeight']=chunk_arr['EvtWgtOVnJet']
                 chunk_df['proces']=sampleName
                 chunk_df['key']=key
                 chunk_df['target']=target
@@ -303,6 +304,22 @@ def make_ks_plot(y_train, train_proba, y_test, test_proba, bins=30, fig_sz=(10, 
     plt.savefig(plotname+".pdf")
     plt.savefig(plotname+".png")
     plt.close()
+
+def cross_val_scores_weighted(model, X, y, weights, cv=5, metric=sklearn.metrics.accuracy_score):
+    kf = KFold(n_splits=cv)
+    kf.get_n_splits(X)
+    scores = []
+    for train_index, test_index in kf.split(X):
+        model_clone = sklearn.base.clone(model)
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        weights_train, weights_test = weights[train_index], weights[test_index]
+        model_clone.fit(X_train,y_train,sample_weight=weights_train)
+        y_pred = model_clone.predict(X_test)
+        score = metric(y_test, y_pred, sample_weight = weights_test)
+        #print (score)
+        scores.append(score)
+    return np.array(scores)
 
 def group_event(data, predict):
    data["y_predict"]=predict

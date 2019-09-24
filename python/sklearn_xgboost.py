@@ -3,18 +3,21 @@
   ../examples/sklearn_Xgboost_csv_evtLevel_ttH_Tallinn.py (developped by Alexandra from TLL group) and ../examples/sklearn_examples.py (example in XgBoost documentations by Jamie Hall ) are the starting point of this script
   Modified by Binghuan Li    --  3 Dec 2018 
 '''
-
+from bayes_opt import BayesianOptimization
 import sys, os, subprocess
 import optparse
 import pickle
 import xgboost as xgb
 import numpy as np
-from sklearn.model_selection import KFold, train_test_split, GridSearchCV, StratifiedKFold
+from sklearn.model_selection import KFold, train_test_split, GridSearchCV, StratifiedKFold, RandomizedSearchCV
 from sklearn.metrics import confusion_matrix, mean_squared_error
 from sklearn.metrics import roc_curve, auc, roc_auc_score
 from sklearn.feature_selection import RFECV, RFE
 from functools import partial
+from datetime import datetime
 import json
+from bayes_opt.observer import JSONLogger
+from bayes_opt.event import Events
 
 rng = np.random.RandomState(31337)
 
@@ -55,8 +58,9 @@ FeatureSelection = False
 RFESelection = False
 n_features = 13
 GridSearch = False
-postFix = "alljets" 
-tagger = "ttWbkg"
+BayesianOpt = False
+postFix = "nogenhadTop" 
+tagger = "HwwSig"
 ROC_test = False
 
 ####################################################################################################
@@ -72,7 +76,9 @@ with open('../scripts/input_variable_list.json') as json_file:
 inputPath = "/home/binghuan/Work/TTHLep/TTHLep_RunII/ttH_hjtagger_xgboost/data/"
 specs = ["Jet25_isToptag","run","ls","nEvent","DataEra"]
 #data=load_data_2017(inputPath, variables,"Jet25_isToptag<0.5") # select only jets not tagged by TopTaggers 
-data=load_data_2017(inputPath, variables, specs, year, False) # select all jets 
+#data=load_data_2017(inputPath, variables, specs, year, False) # select all jets 
+#data=load_data_2017(inputPath, variables, specs, year, "!(Jet25_isFromTop==1 && Jet25_isFromLepTop!=1)") # exclude genhadtop jets 
+data=load_data_2017(inputPath, variables, specs, year, " ( HiggsDecay==2 || HiggsDecay==0 ) && !(Jet25_isFromTop==1 && Jet25_isFromLepTop!=1)") # exclude genhadtop jets and select only hww 
 #**********************
 
 data = data.fillna(0.)
@@ -104,7 +110,7 @@ if (not FeatureSelection) and ( not GridSearch):
 
 #########################################################################################
 ## split dataset
-traindataset, valdataset  = train_test_split(data, test_size=0.5, random_state=rng)
+traindataset, valdataset  = train_test_split(data, test_size=0.2, random_state=rng)
 ## to GridSearchCV the test_size should not be smaller than 0.4 == it is used for cross validation!
 ## to final BDT fit test_size can go down to 0.1 without sign of overtraining
 #############################################################################################
@@ -134,28 +140,107 @@ nS = len(traindataset.ix[(traindataset.target.values == 1)])
 nB = len(traindataset.ix[(traindataset.target.values == 0)])
 print ("length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", float(nB)/float(nS) )
 
+# Bayesian optimization
+# https://github.com/fmfn/BayesianOptimization
+if GridSearch and BayesianOpt :
+    def train_model(
+                max_depth, 
+                gamma,
+                subsample,
+                learning_rate, 
+                colsample_bytree, 
+                min_child_weight, 
+                n_estimators):
+        params = {
+            'max_depth': int(max_depth),
+            'gamma': gamma,
+            'subsample': subsample,
+            'learning_rate':learning_rate,
+            'colsample_bytree':colsample_bytree,
+            'min_child_weight': int(min_child_weight),
+            'n_estimators':int(n_estimators)
+        }
+        model = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS), **params, objective='binary:logistic')
+        scores = cross_val_scores_weighted(model, traindataset[variables].values, traindataset.target.astype(np.bool).values, traindataset["totalWeight"].astype(np.float64).values, cv=3, metric = roc_auc_score)
+        '''
+        model.fit(
+            traindataset[variables].values,
+            traindataset.target.astype(np.bool),
+            sample_weight=(traindataset["totalWeight"].astype(np.float64)))
+        probaB = model.predict_proba(valdataset[variables].values )
+        fprB, tprB, thresholds = roc_curve(valdataset["target"], probaB[:,1], sample_weight=(valdataset["totalWeight"].astype(np.float64)))
+        test_auct = auc(fprB, tprB, reorder = True)
+        '''
+        return scores.mean()
+    
+    bounds = {
+            'max_depth': (2,8), # default 6
+            'gamma': (0, 7), # default 0
+            'subsample': (0.5, 1.0), # default 1  
+            'learning_rate':(0.01, 1), # default 0.3
+            'colsample_bytree':(0.5,1.0), # default 1
+            'min_child_weight': (0,20), # default 1 
+            'n_estimators':(50,500) # default 100
+    }
+
+    optimizer = BayesianOptimization(
+        f=train_model,
+        pbounds=bounds,
+        random_state=rng
+    )
+    
+    saveopt = "{}/GridSearch_BayesOpt_{}.json".format(outputLogDir,year)
+    logger = JSONLogger(path=saveopt)
+    optimizer.subscribe(Events.OPTMIZATION_STEP, logger)
+    
+    optimizer.maximize(init_points=7, n_iter=40)
+    print (optimizer.max)
+
 # search and save parameters
-if GridSearch :
+if GridSearch and not BayesianOpt :
+    # weight is not passed correctly FIXME
     # http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
-    param_grid = {
-                'n_estimators': [ 100, 200, 500],
-                'min_child_weight': [ 1, 10, 50],
-                'max_depth': [ 2, 3, 4],
-                'learning_rate': [0.01, 0.1, 0.3]
-                }
+    params = {
+        'min_child_weight': [1, 5, 10],
+        'gamma': [0.5, 1, 1.5, 2, 5],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.6, 0.8, 1.0],
+        'max_depth': [3, 4, 5]
+        }
     scoring = "roc_auc"
-    early_stopping_rounds = 150 # Will train until validation_0-auc hasn't improved in 100 rounds.
     cv=3
-    cls = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS))
+    cls = xgb.XGBClassifier(learning_rate=0.01, n_estimators=600, objective='binary:logistic',
+                    silent=True, nthread=1, scale_pos_weight = float(nB)/float(nS))
     saveopt = "{}/GridSearch_GSCV_{}.log".format(outputLogDir,year)
     file = open(saveopt,"w")
     print ("opt being saved on ", saveopt)
     #file.write("Date: "+ str(time.asctime( time.localtime(time.time()) ))+"\n")
     file.write(str(variables)+"\n")
-    result_grid = val_tune_rf(cls,
-        traindataset[variables].values, traindataset["target"].astype(np.bool),traindataset["totalWeight"].astype(np.float64),
-        valdataset[variables].values, valdataset["target"].astype(np.bool), valdataset["totalWeight"].astype(np.float64),
-        param_grid, file)
+    
+    folds = 3
+    param_comb = 150
+
+    skf = StratifiedKFold(n_splits=folds, shuffle = True, random_state = 1001)
+
+    X = traindataset[variables].values
+    Y = traindataset["target"].values
+    
+    random_search = RandomizedSearchCV(cls, param_distributions=params, n_iter=param_comb, scoring='roc_auc', n_jobs=4, cv=skf.split(X,Y), verbose=3, random_state=1001 )
+
+    # Here we go
+    start_time = timer(None) # timing starts from this point for "start_time" variable
+    random_search.fit(X, Y)
+    timer(start_time) # timing ends here for "start_time" variable
+    
+    file.write('\n All results:')
+    file.write(random_search.cv_results_)
+    file.write('\n Best estimator:')
+    file.write(random_search.best_estimator_)
+    file.write('\n Best normalized gini score for %d-fold search with %d parameter combinations:' % (folds, param_comb))
+    file.write(random_search.best_score_ * 2 - 1)
+    file.write('\n Best hyperparameters:')
+    file.write(random_search.best_params_)
+    
     #file.write(result_grid)
     #file.write("Date: "+ str(time.asctime( time.localtime(time.time()) ))+"\n")
     file.close()
@@ -216,14 +301,39 @@ if FeatureSelection :
 
 if (not GridSearch) and (not FeatureSelection):
     
+    '''
     param_dist = {
+                'booster':'dart',
+                'sample_type':'uniform',
+                'normalize_type':'tree',
+                'rate_drop': 0.1,
+                'skip_drop': 0.5,
                 'n_estimators': 100,
                 'min_child_weight': 1,
                 'max_depth': 3,
                 'learning_rate': 0.1
                 }
+    num_round = 50
+
     clf = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS), **param_dist)
+    '''
     
+    param_dist = {
+                'max_depth': 2,
+                'gamma': 0.0,
+                'subsample': 1.0,
+                'learning_rate':1.0,
+                'colsample_bytree':1.0,
+                'min_child_weight': 0.0,
+                'n_estimators':200
+                #'n_estimators': 100,
+                #'min_child_weight': 1,
+                #'max_depth': 3,
+                #'learning_rate': 0.1
+                }
+    #clf = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS), **param_dist, objective="binary:logistic")
+    clf = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS), objective="binary:logistic")
+
     clf.fit(
         traindataset[variables].values,
         traindataset.target.astype(np.bool),
@@ -232,6 +342,7 @@ if (not GridSearch) and (not FeatureSelection):
         eval_set=[(traindataset[variables].values,  traindataset.target.astype(np.bool),traindataset["totalWeight"].astype(np.float64)),
         (valdataset[variables].values,  valdataset.target.astype(np.bool), valdataset["totalWeight"].astype(np.float64))],
         verbose=True,eval_metric="auc"
+        #early_stopping_rounds=num_round
         )
     
     
@@ -248,15 +359,20 @@ if (not GridSearch) and (not FeatureSelection):
     print (traindataset[variables].columns.values.tolist())
     print ("XGBoost trained")
     proba = clf.predict_proba(traindataset[variables].values )
+    #proba = clf.predict_proba(traindataset[variables].values, ntree_limit=num_round )
     # print (proba)
     fpr, tpr, thresholds = roc_curve(traindataset["target"], proba[:,1],
         sample_weight=(traindataset["totalWeight"].astype(np.float64)) )
     train_auc = auc(fpr, tpr, reorder = True)
     print("XGBoost train set auc - {}".format(train_auc))
     probaT = clf.predict_proba(valdataset[variables].values )
+    #probaT = clf.predict_proba(valdataset[variables].values, ntree_limit=num_round )
     fprt, tprt, thresholds = roc_curve(valdataset["target"], probaT[:,1], sample_weight=(valdataset["totalWeight"].astype(np.float64))  )
     test_auct = auc(fprt, tprt, reorder = True)
     print("XGBoost test set auc - {}".format(test_auct))
+    proba_auc = clf.predict(valdataset[variables].values )
+    test_auc_roc_score = roc_auc_score(valdataset["target"].values,proba_auc, sample_weight=(valdataset["totalWeight"].astype(np.float64).values))
+    print("XGBoost test roc auc score - {}".format(test_auc_roc_score))
     fig, ax = plt.subplots(figsize=(6, 6))
     ## ROC curve
     #ax.plot(fprf, tprf, lw=1, label='GB train (area = %0.3f)'%(train_aucf))
@@ -329,7 +445,7 @@ if (not GridSearch) and (not FeatureSelection):
     # plot probability distribution and do KS-test
     ###########################################################################
     if 1>0: # FIXME
-        make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1], plotname="{}/{}_ksTest{}_{}".format(outputPlotDir,tagger,postFix, year))
+        make_ks_plot(traindataset["target"], proba[:,1], valdataset["target"], probaT[:,1], plotname="{}/{}_ksTest{}_{}".format(outputPlotDir,tagger,postFix, year),bins=50)
 
 
     ###########################################################

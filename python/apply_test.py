@@ -44,8 +44,8 @@ FeatureSelection = False
 RFESelection = False
 n_features = 13
 GridSearch = False
-postFix = "alljets" 
-tagger = "ttWbkg"
+postFix = "nogenhadTop" 
+tagger = "HwwSig"
 ####################################################################################################
 ## load input variables
 with open('../scripts/input_variable_list.json') as json_file: 
@@ -66,13 +66,20 @@ data_test = data_test.fillna(0.)
 ######################################
 ### load models
 ######################################
-models = ["{}/{}_{}_2016".format(outputWgtDir, tagger, postFix), "{}/{}_{}_2017".format(outputWgtDir, tagger, postFix), "{}/{}_{}_2018".format(outputWgtDir, tagger, postFix) ] # model names
+#models = ["{}/{}_{}_2016".format(outputWgtDir, tagger, postFix), "{}/{}_{}_2017".format(outputWgtDir, tagger, postFix), "{}/{}_{}_2018".format(outputWgtDir, tagger, postFix), "{}/{}_{}_runII".format(outputWgtDir, tagger, postFix) ] # model names
+#pkllabels = ["2016","2017","2018","runII"]
+#models = ["{}/{}_{}_2016".format(outputWgtDir, tagger, postFix), "{}/{}_{}_2017".format(outputWgtDir, tagger, postFix), "{}/{}_{}_2018".format(outputWgtDir, tagger, postFix)] # model names
+#pkllabels = ["2016","2017","2018"]
+models = ["{}/{}_{}_runII".format(outputWgtDir, tagger, postFix)]
+pkllabels = ["runII"]
 
 print (variables)
 print (data_test.columns.values.tolist())
 
 fig, ax = plt.subplots(figsize=(6, 6))
-for model in models:
+for i in range(len(models)):
+    model = models[i]
+    pkl_lab = pkllabels[i]
     clf = pickle.load(open("{}.pkl".format(model), "rb"))
     print ("XGBoost model {}".format(model))
     proba = clf.predict_proba(data_test[variables].values)
@@ -87,7 +94,7 @@ for model in models:
     
     tag = model[model.rfind("/")+1:]
     ## ROC curve
-    ax.plot(fpr, tpr, lw=1, label='%s (area = %0.3f)'%(tag, test_auc))
+    ax.plot(fpr, tpr, lw=1, label='%s (area = %0.3f)'%(pkl_lab, test_auc))
 
 ax.set_ylim([0.0,1.0])
 ax.set_xlim([0.0,1.0])
@@ -95,6 +102,6 @@ ax.set_xlabel('False Positive Rate')
 ax.set_ylabel('True Positive Rate')
 ax.legend(loc="lower right")
 ax.grid()
-fig.savefig("{}/roc_eval_test-per-event_{}.png".format(outputPlotDir, year))
-fig.savefig("{}/roc_eval_test-per-event_{}.pdf".format(outputPlotDir, year))
+fig.savefig("{}/roc_eval_test-per-event_runII_{}.png".format(outputPlotDir, year))
+fig.savefig("{}/roc_eval_test-per-event_runII_{}.pdf".format(outputPlotDir, year))
     
