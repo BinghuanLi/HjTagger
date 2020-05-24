@@ -3,7 +3,6 @@
   ../examples/sklearn_Xgboost_csv_evtLevel_ttH_Tallinn.py (developped by Alexandra from TLL group) and ../examples/sklearn_examples.py (example in XgBoost documentations by Jamie Hall ) are the starting point of this script
   Modified by Binghuan Li    --  3 Dec 2018 
 '''
-from bayes_opt import BayesianOptimization
 import sys, os, subprocess
 import optparse
 import pickle
@@ -16,8 +15,6 @@ from sklearn.feature_selection import RFECV, RFE
 from functools import partial
 from datetime import datetime
 import json
-from bayes_opt.observer import JSONLogger
-from bayes_opt.event import Events
 
 rng = np.random.RandomState(31337)
 
@@ -143,6 +140,9 @@ print ("length of sig, bkg used in train: ", nS, nB, " scale_pos_weight ", float
 # Bayesian optimization
 # https://github.com/fmfn/BayesianOptimization
 if GridSearch and BayesianOpt :
+    from bayes_opt import BayesianOptimization
+    from bayes_opt.observer import JSONLogger
+    from bayes_opt.event import Events
     def train_model(
                 max_depth, 
                 gamma,
@@ -158,9 +158,12 @@ if GridSearch and BayesianOpt :
             'learning_rate':learning_rate,
             'colsample_bytree':colsample_bytree,
             'min_child_weight': int(min_child_weight),
-            'n_estimators':int(n_estimators)
+            'n_estimators':int(n_estimators),
+            'scale_pos_weight': float(nB)/float(nS),
+            'objective': 'binary:logistic'
         }
-        model = xgb.XGBClassifier(scale_pos_weight = float(nB)/float(nS), **params, objective='binary:logistic')
+        #model = xgb.XGBClassifier(**params, scale_pos_weight = float(nB)/float(nS), objective='binary:logistic')
+        model = xgb.XGBClassifier(**params)
         scores = cross_val_scores_weighted(model, traindataset[variables].values, traindataset.target.astype(np.bool).values, traindataset["totalWeight"].astype(np.float64).values, cv=3, metric = roc_auc_score)
         '''
         model.fit(
